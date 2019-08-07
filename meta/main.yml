@@ -1,8 +1,8 @@
 galaxy_info:
-  author: Martin Abegglen
-  description: Simple OpenShift Cronjob that creates a etcd snapshot and writes it to a Persistent Volume. 
-  company: Puzzle ITC
-  license: license (GPL-2.0-or-later, MIT, etc)
+  author: APPUiO Team
+  description: Role to create a simple OpenShift cronjob creating etcd snapshot and writes it to a Persistent Volume.
+  company: Puzzle ITC and VSHN
+  license: Apache License, Version 2.0
   min_ansible_version: 2.8
   galaxy_tags: []
 dependencies: []
