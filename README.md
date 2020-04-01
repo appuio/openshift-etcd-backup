@@ -10,17 +10,13 @@ PyYAML >= 3.11
 ```
 
 ## Installation
-Tested on OpenShift 3.11
+Tested on OpenShift 4.3
 
 ```
 ansible-playbook playbook.yml \
--e openshift_etcd_backup_job_name="cronjob-etcd-backup" \
--e openshift_etcd_backup_schedule="0 6,18 * * * * "
--e openshift_etcd_backup_job_service_account="etcd-backup"
--e openshift_etcd_backup_namespace="etcd-backup"
--e openshift_etcd_backup_image="registry.redhat.io/rhel7/etcd"
--e openshift_etcd_backup_image_tag="3.2.2"
--e openshift_etcd_backup_storage_size="10G"
+-e openshift_etcd_backup_schedule="0 6,18 * * * *" \
+-e openshift_etcd_backup_namespace="etcd-backup" \
+-e openshift_etcd_backup_storage_size="10G" \
 -e openshift_etcd_backup_deadline="3600"
 
 oc adm policy add-scc-to-user privileged system:serviceaccount:${openshift_etcd_backup_namespace}:etcd-backup

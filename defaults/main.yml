@@ -1,10 +1,11 @@
 ---
 openshift_etcd_backup_retention_time: 2
 openshift_etcd_backup_job_name: "cronjob-etcd-backup"
-openshift_etcd_backup_schedule: "8 * * * * "
+openshift_etcd_backup_schedule: "8 * * * *"
 openshift_etcd_backup_job_service_account: "etcd-backup"
-openshift_etcd_backup_namespace: "pitc-infra-etcd-backup"
-openshift_etcd_backup_image: "registry.redhat.io/rhel7/etcd"
-openshift_etcd_backup_image_tag: "3.2.22"
+openshift_etcd_backup_namespace: "etcd-backup"
+openshift_etcd_backup_image: "registry.redhat.io/openshift4/ose-setup-etcd-environment"
+openshift_etcd_backup_image_tag: "latest"
 openshift_etcd_backup_storage_size: "10G"
-openshift_etcd_backup_deadline: "3600"
+openshift_etcd_backup_deadline: 3600
+openshift_etcd_backup_storageclass: "nfs"

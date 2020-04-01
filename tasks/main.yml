@@ -1,4 +1,12 @@
 ---
+- name: Get etcd endpoint
+  k8s_info:
+    kind: Pod
+    namespace: openshift-etcd
+    field_selectors:
+      - status.phase=Running
+  register: etcd_pod
+
 - name: Create a namespace
   k8s:
     name: "{{ openshift_etcd_backup_namespace }}"
@@ -12,7 +20,7 @@
 # To Fix: As soon the module is fixed to set metadata on namespace objects, use the module instead and delete the workaround
 - name: Change default nodeSelector to masters
   command: "oc patch namespace {{ openshift_etcd_backup_namespace }} \
-            -p '{ \"metadata\":{ \"annotations\":{ \"openshift.io/node-selector\":\"node-role.kubernetes.io/master=true\" }} }}'"
+            -p '{ \"metadata\":{ \"annotations\":{ \"openshift.io/node-selector\":\"node-role.kubernetes.io/master=\"} }}'"
 
 - name: Create CronJob for openshift-etcd-backup
   k8s:
@@ -39,34 +47,43 @@
                     command:
                       - "/bin/bash"
                       - "-c"
-                      - "/script/backup.sh"
+                      - "/usr/local/bin/etcd-snapshot-backup.sh /backup && find /backup/* -mtime +{{ openshift_etcd_backup_retention_time }} -delete"
                     env:
-                      - name: ETCDCTL_API
-                        value: "3"
+                      - name: "ETCDCTL_ENDPOINTS"
+                        value: "{{ etcd_pod.resources[1].status.podIP }}:2379"
                     volumeMounts:
+                      - name: cluster-etcd-script
+                        mountPath: /usr/local/bin/
                       - name: cluster-etcd-config
-                        mountPath: /etc/etcd
-                        readOnly: true
+                        mountPath: /etc/kubernetes
+                      - name: cluster-etcd-data
+                        mountPath: /var/lib/etcd
+                      - name: cluster-recovery-tools
+                        mountPath: /usr/local/bin/openshift-recovery-tools
                       - name: backupdir
                         mountPath: /backup
-                      - name: backupscript
-                        mountPath: /script
-                nodeSelector:
-                  "node-role.kubernetes.io/master": "true"
                 restartPolicy: Never
                 terminationGracePeriodSeconds: 30
                 activeDeadlineSeconds: "{{ openshift_etcd_backup_deadline }}"
                 dnsPolicy: ClusterFirst
+                tolerations:
+                - effect: NoSchedule
+                  key: node-role.kubernetes.io/master
                 serviceAccountName: "{{ openshift_etcd_backup_job_service_account }}"
                 serviceAccount: "{{ openshift_etcd_backup_job_service_account }}"
                 volumes:
+                  - name: cluster-etcd-script
+                    hostPath:
+                      path: /usr/local/bin/
                   - name: cluster-etcd-config
                     hostPath:
-                      path: /etc/etcd
-                  - name: backupscript
-                    configMap:
-                      defaultMode: 0755
-                      name: openshift-backup-script
+                      path: /etc/kubernetes
+                  - name: cluster-etcd-data
+                    hostPath:
+                      path: /var/lib/etcd
+                  - name: cluster-recovery-tools
+                    hostPath:
+                      path: /usr/local/bin/openshift-recovery-tools
                   - name: backupdir
                     persistentVolumeClaim:
                       claimName: etcd-backup
@@ -82,57 +99,13 @@
         name: etcd-backup
         namespace: "{{ openshift_etcd_backup_namespace }}"
       spec:
-        storageClassName: glusterfs-storage
+        storageClassName: "{{ openshift_etcd_backup_storageclass }}"
         accessModes:
           - ReadWriteOnce
         resources:
           requests:
             storage: "{{ openshift_etcd_backup_storage_size }}"
 
-
-- name: Create ConfigMap for openshift-etcd-backup
-  k8s:
-    namespace: "{{ openshift_etcd_backup_namespace }}"
-    state: present
-    definition:
-      kind: ConfigMap
-      apiVersion: v1
-      metadata:
-        name: openshift-backup-script
-        namespace: "{{ openshift_etcd_backup_namespace }}"
-      data:
-        backup.sh: |
-          #!/bin/bash
-          BACKUP_DIR="/backup"
-          ETCD_CONFIG_DIR="/etc/etcd"
-          START_TIME=$(date +%Y%m%d%H%M)
-          BACKUP_DIR_WITH_DATE=${BACKUP_DIR}/${START_TIME}
-          log(){
-            date "+%F %T: ${@}"
-          }
-          die(){
-            log "$1"
-            exit "$2"
-          }
-          log "Cleanup"
-          find $BACKUP_DIR -mtime +{{ openshift_etcd_backup_retention_time }} -delete
-          log "Setup"
-          mkdir -p $BACKUP_DIR_WITH_DATE
-          log "Backup etcd"
-          ETCD_EP=$(grep https.*2379 ${ETCD_CONFIG_DIR}/etcd.conf | cut -d '/' -f3 | head -1)
-          ETCDCTL_API=3 etcdctl \
-           --cert /etc/etcd/peer.crt --key /etc/etcd/peer.key --cacert /etc/etcd/ca.crt \
-           --endpoints ${ETCD_EP} snapshot save ${BACKUP_DIR_WITH_DATE}/snapshot.db
-          ETCDCTL_API=3 etcdctl \
-           --cert /etc/etcd/peer.crt --key /etc/etcd/peer.key --cacert /etc/etcd/ca.crt \
-           --endpoints ${ETCD_EP} snapshot status ${BACKUP_DIR_WITH_DATE}/snapshot.db
-          [ "$?" -ne 0 ] \
-          && die "${BACKUP_DIR_WITH_DATE}/snapshot.db is not a valid etcd backup. Please check the status of your etcd cluster" 1
-          cd ${BACKUP_DIR_WITH_DATE}
-          log "Zipping"
-          tar czf ${BACKUP_DIR}/backup-${START_TIME}.tar.gz * --warning=no-file-changed
-          log "Cleanup"
-          rm -rf ${BACKUP_DIR_WITH_DATE}
 
 - name: Create ServiceAccount for openshift-etcd-backup
   k8s:

@@ -1,0 +1,4 @@
+---
+- hosts: localhost
+  roles:
+    - openshift4_etcd_backup
